@@ -93,12 +93,28 @@ mod tests {
     #[test]
     fn test_put_get() {
         let mut cache = LRUCache::new(16);
-        cache.put(1, 2);
-        assert_eq!(cache.get(&1).unwrap(), 2);
+        cache.put(&1, 2);
+        assert_eq!(*cache.get(&1).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_update() {
+        let mut cache = LRUCache::new(16);
+        cache.put(&1, "hello");
+        cache.put(&2, "new");
+        cache.put(&2, "world");
+        assert_eq!(*cache.get(&1).unwrap(), "hello");
+        assert_eq!(*cache.get(&2).unwrap(), "world");
     }
 
     #[test]
     fn test_eviction() {
-
+        let mut cache = LRUCache::new(2);
+        cache.put(&1, "hello");
+        cache.put(&2, "world");
+        cache.put(&3, "hello");
+        assert!(cache.get(&1).is_none());
+        assert!(cache.get(&2).is_some());
+        assert!(cache.get(&3).is_some());
     }
 }
