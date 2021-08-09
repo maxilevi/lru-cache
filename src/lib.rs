@@ -67,8 +67,44 @@ impl<K: Eq + Hash, V> LRUCache<K, V> {
         }
     }
 
-    pub fn put(&mut self, key: K, value: V) {
+    pub fn put(&mut self, key: &'a K, value: V) {
+        match self.get_index(&key) {
+            Some(idx) => {
+                let entry = &mut self.queue[idx as usize];
+                entry.set_value(value);
+            }
+            None => {
+                if self.queue.len() == self.max_size {
+                    let entry = &mut self.queue[self.tail as usize];
+                    entry.set_value(value);
+                    self.map.remove(entry.key());
+                    entry.set_key(key);
 
+                } else {
+                    self.queue.push(CacheEntry {
+                        prev: self.tail,
+                        next: 0,
+                        val: value,
+                        key,
+                    });
+                    self.tail = self.queue.len() as u32 - 1;
+                };
+
+                if self.queue.len() == 1 {
+                    self.head = self.tail
+                }
+
+                self.map.insert(key, self.tail);
+                self.mark_access(self.tail);
+            }
+        }
+    }
+
+    fn get_index(&self, key: &K) -> Option<u32> {
+        match self.map.get(key) {
+            Some(idx) => Some(*idx),
+            None => None,
+        }
     }
 
     fn mark_access(&mut self, idx: u32) {
