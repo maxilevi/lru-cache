@@ -75,15 +75,20 @@ impl<K: Eq + Hash, V> LRUCache<K, V> {
         if idx == self.head {
             return;
         }
-        let mut queue = &mut self.queue;
-        let mut head_entry = queue[self.head as usize];
-        let mut accessed_entry = &mut self.queue[idx as usize];
-        let mut prev_accessed = &mut self.queue[accessed_entry.previous() as usize];
-        head_entry.set_previous(idx);
-        prev_accessed.set_next(accessed_entry.next());
-        accessed_entry.set_next(self.head);
+
+        let prev = self.queue[idx as usize].previous() as usize;
+        let next = self.queue[idx as usize].next() as usize;
+
+        if idx == self.tail {
+            self.tail = prev as u32;
+        }
+
+        self.queue[self.head as usize].set_previous(idx);
+        self.queue[prev].set_next(next as u32);
+        self.queue[idx as usize].set_next(self.head);
         self.head = idx;
     }
+
 }
 
 #[cfg(test)]
