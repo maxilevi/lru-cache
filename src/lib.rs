@@ -1,27 +1,28 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-struct CacheEntry<T> {
+struct CacheEntry<'a, K, V> {
     prev: u32,
     next: u32,
-    val: T,
+    key: &'a K,
+    val: V,
 }
 
-impl<T> CacheEntry<T> {
-    pub fn new(val: T) -> Self {
-        CacheEntry {
-            prev: 0,
-            next: 0,
-            val,
-        }
-    }
-
+impl<'a, K, V> CacheEntry<'a, K, V> {
     pub fn set_previous(&mut self, prev: u32) {
         self.prev = prev;
     }
 
     pub fn set_next(&mut self, next: u32) {
         self.next = next;
+    }
+
+    pub fn set_key(&mut self, key: &'a K) {
+        self.key = key;
+    }
+
+    pub fn set_value(&mut self, val: V) {
+        self.val = val;
     }
 
     pub fn previous(&self) -> u32 {
@@ -32,20 +33,24 @@ impl<T> CacheEntry<T> {
         self.next
     }
 
-    pub fn value(&self) -> &T {
+    pub fn key(&self) -> &'a K {
+        self.key
+    }
+
+    pub fn value(&self) -> &V {
         &self.val
     }
 }
 
-pub struct LRUCache<K: Eq + Hash, V> {
-    map: HashMap<K, u32>,
-    queue: Vec<CacheEntry<V>>,
+pub struct LRUCache<'a, K: Eq + Hash, V> {
+    map: HashMap<&'a K, u32>,
+    queue: Vec<CacheEntry<'a, K, V>>,
     max_size: usize,
     head: u32,
     tail: u32,
 }
 
-impl<K: Eq + Hash, V> LRUCache<K, V> {
+impl<'a, K: Eq + Hash, V> LRUCache<'a, K, V> {
 
     pub fn new(max_size: usize) -> Self {
         LRUCache {
@@ -58,10 +63,11 @@ impl<K: Eq + Hash, V> LRUCache<K, V> {
     }
 
     pub fn get(&mut self, key: &K) -> Option<&V> {
-        match self.map.get(key) {
+        match self.get_index(key) {
             Some(idx) => {
-                self.mark_access(*idx);
-                Some(self.queue[*idx as usize].value())
+                self.mark_access(idx);
+                let value = self.queue[idx as usize].value();
+                Some(value)
             },
             None => None,
         }
