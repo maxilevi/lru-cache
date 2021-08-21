@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::rc::Rc;
 
-struct CacheEntry<'a, K, V> {
+struct CacheEntry<K, V> {
     prev: u32,
     next: u32,
-    key: &'a K,
+    key: Rc<K>,
     val: V,
 }
 
-impl<'a, K, V> CacheEntry<'a, K, V> {
+impl<K, V> CacheEntry<K, V> {
     pub fn set_previous(&mut self, prev: u32) {
         self.prev = prev;
     }
@@ -17,7 +18,7 @@ impl<'a, K, V> CacheEntry<'a, K, V> {
         self.next = next;
     }
 
-    pub fn set_key(&mut self, key: &'a K) {
+    pub fn set_key(&mut self, key: Rc<K>) {
         self.key = key;
     }
 
@@ -33,8 +34,8 @@ impl<'a, K, V> CacheEntry<'a, K, V> {
         self.next
     }
 
-    pub fn key(&self) -> &'a K {
-        self.key
+    pub fn key(&self) -> &Rc<K> {
+        &self.key
     }
 
     pub fn value(&self) -> &V {
@@ -42,18 +43,17 @@ impl<'a, K, V> CacheEntry<'a, K, V> {
     }
 }
 
-pub struct LRUCache<'a, K: Eq + Hash, V> {
-    map: HashMap<&'a K, u32>,
-    queue: Vec<CacheEntry<'a, K, V>>,
+pub struct LruCache<K: Eq + Hash, V> {
+    map: HashMap<Rc<K>, u32>,
+    queue: Vec<CacheEntry<K, V>>,
     max_size: usize,
     head: u32,
     tail: u32,
 }
 
-impl<'a, K: Eq + Hash, V> LRUCache<'a, K, V> {
-
+impl<K: Eq + Hash, V> LruCache<K, V> {
     pub fn new(max_size: usize) -> Self {
-        LRUCache {
+        LruCache {
             map: HashMap::new(),
             queue: Vec::new(),
             max_size,
@@ -66,51 +66,54 @@ impl<'a, K: Eq + Hash, V> LRUCache<'a, K, V> {
         match self.get_index(key) {
             Some(idx) => {
                 self.mark_access(idx);
-                let value = self.queue[idx as usize].value();
-                Some(value)
-            },
+                Some(self.queue[idx as usize].value())
+            }
             None => None,
         }
     }
 
-    pub fn put(&mut self, key: &'a K, value: V) {
+    pub fn put(&mut self, key: K, value: V) {
         match self.get_index(&key) {
             Some(idx) => {
                 let entry = &mut self.queue[idx as usize];
                 entry.set_value(value);
             }
             None => {
-                if self.queue.len() == self.max_size {
-                    let entry = &mut self.queue[self.tail as usize];
-                    entry.set_value(value);
-                    self.map.remove(entry.key());
-                    entry.set_key(key);
-
-                } else {
-                    self.queue.push(CacheEntry {
-                        prev: self.tail,
-                        next: 0,
-                        val: value,
-                        key,
-                    });
-                    self.tail = self.queue.len() as u32 - 1;
-                };
-
-                if self.queue.len() == 1 {
-                    self.head = self.tail
+                let key_rc = Rc::new(key);
+                match self.queue.len() == self.max_size {
+                    true => self.replace_tail(key_rc.clone(), value),
+                    false => self.add_tail(key_rc.clone(), value),
                 }
 
-                self.map.insert(key, self.tail);
+                self.map.insert(key_rc, self.tail);
                 self.mark_access(self.tail);
             }
         }
     }
 
-    fn get_index(&self, key: &K) -> Option<u32> {
-        match self.map.get(key) {
-            Some(idx) => Some(*idx),
-            None => None,
+    fn replace_tail(&mut self, key: Rc<K>, value: V) {
+        let entry = &mut self.queue[self.tail as usize];
+        entry.set_value(value);
+        self.map.remove(entry.key());
+        entry.set_key(key);
+    }
+
+    fn add_tail(&mut self, key: Rc<K>, value: V) {
+        self.queue.push(CacheEntry {
+            prev: self.tail,
+            next: 0,
+            val: value,
+            key,
+        });
+        self.tail = self.queue.len() as u32 - 1;
+
+        if self.queue.len() == 1 {
+            self.head = self.tail
         }
+    }
+
+    fn get_index(&self, key: &K) -> Option<u32> {
+        self.map.get(key).map(|idx| *idx)
     }
 
     fn mark_access(&mut self, idx: u32) {
@@ -130,7 +133,6 @@ impl<'a, K: Eq + Hash, V> LRUCache<'a, K, V> {
         self.queue[idx as usize].set_next(self.head);
         self.head = idx;
     }
-
 }
 
 #[cfg(test)]
@@ -139,29 +141,37 @@ mod tests {
 
     #[test]
     fn test_put_get() {
-        let mut cache = LRUCache::new(16);
-        cache.put(&1, 2);
+        let mut cache = LruCache::new(16);
+        cache.put(1, 2);
         assert_eq!(*cache.get(&1).unwrap(), 2);
     }
 
     #[test]
     fn test_update() {
-        let mut cache = LRUCache::new(16);
-        cache.put(&1, "hello");
-        cache.put(&2, "new");
-        cache.put(&2, "world");
+        let mut cache = LruCache::new(16);
+        cache.put(1, "hello");
+        cache.put(2, "new");
+        cache.put(2, "world");
         assert_eq!(*cache.get(&1).unwrap(), "hello");
         assert_eq!(*cache.get(&2).unwrap(), "world");
     }
 
     #[test]
     fn test_eviction() {
-        let mut cache = LRUCache::new(2);
-        cache.put(&1, "hello");
-        cache.put(&2, "world");
-        cache.put(&3, "hello");
+        let mut cache = LruCache::new(2);
+        cache.put(1, "hello");
+        cache.put(2, "world");
+        cache.put(3, "hello");
         assert!(cache.get(&1).is_none());
         assert!(cache.get(&2).is_some());
         assert!(cache.get(&3).is_some());
+    }
+
+    #[test]
+    fn test_put_get_strings() {
+        let mut cache = LruCache::new(1);
+        cache.put(format!("hola, {}", "s"), 101);
+        let s = format!("hola, {}", "s");
+        assert_eq!(*cache.get(&s).unwrap(), 101);
     }
 }
