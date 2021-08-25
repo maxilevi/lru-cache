@@ -113,7 +113,7 @@ impl<K: Eq + Hash, V> LruCache<K, V> {
     }
 
     fn get_index(&self, key: &K) -> Option<u32> {
-        self.map.get(key).map(|idx| *idx)
+        self.map.get(key).copied()
     }
 
     fn mark_access(&mut self, idx: u32) {
